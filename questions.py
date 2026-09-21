@@ -22,12 +22,33 @@ names a target of "4 of 5", and four of three is not a thing.
 """
 
 QUESTIONS = [
-    # {"question": "...", "expects": "..."},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
+    # Corpus: city_guides. Each `expects` is a proper noun or a number, because
+    # those are the parts of an answer I can check the same way twice. A phrase
+    # like "quite early" would have me grading my own wording in unit 2.
+    {
+        "question": "What time do the car parks in Halden Bay fill up on a summer weekend?",
+        "expects": "10am",
+    },
+    {
+        "question": "Which street in Halden Bay has cheaper food than the harbour front?",
+        "expects": "Fell Street",
+    },
+    {
+        "question": "How often does the road out to Elder Ness flood?",
+        "expects": "six times",
+    },
+    {
+        "question": "Which town in the region is easiest to get around with limited mobility?",
+        "expects": "Thornby Wells",
+    },
+    # The hard one, on purpose. "10am" and "1963" are repeated in three or four
+    # documents each; the Corry Vale farm shop is named in exactly two
+    # (guide_corry_vale.md and guide_eating.md). If one question misses, I
+    # expect it to be this one.
+    {
+        "question": "If I am staying in Corry Vale for a few days, where can I buy food?",
+        "expects": "farm shop",
+    },
 ]
 
 # Questions from a different world entirely. Your gate should refuse all five.
