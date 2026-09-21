@@ -8,11 +8,30 @@
 
 ## What This Does
 
-<!-- Three or four sentences. Which corpus you picked, and the kinds of
-     questions your system answers. Write it for someone who has never seen
-     this repo.
+This is a question-answering system over `city_guides`, fourteen travel guides
+covering nine towns in one invented region — Brightwater, Halden Bay,
+Kestrelford, Marchwood, Pellew Sands, Thornby Wells, Givens Mill, Elder Ness and
+the Corry Vale villages — plus five guides that cut across all of them on eating,
+walking, regional transport, seasons and accessibility. You ask it a plain
+question and it answers from those documents only, naming the file the answer
+came from.
 
-     Milestone 5. -->
+It handles the practical questions a guidebook index can't: "what time do the car
+parks in Halden Bay fill up on a summer weekend?", "which street has cheaper food
+than the harbour front?", "how often does the road out to Elder Ness flood?" —
+the kind where the answer is one sentence buried in the middle of a section about
+something else. It is good at questions that name a place and want a specific
+fact, and weaker on questions that compare towns, because those need several
+documents at once and it retrieves five chunks total.
+
+Ask it something the region's guides don't cover and it says so rather than
+guessing. That is a check in my own code, not a request to the model: before any
+answer is written, `gate.py` looks at how far the closest retrieved chunk
+actually is, and if it is past 0.70 the question stops there and the system
+returns "I don't have enough information about that."
+
+Run it with `python app.py index` once, then
+`python app.py ask "your question"`.
 
 ## Chunking Strategy
 
@@ -58,9 +77,10 @@ Reading `guide_kestrelford.md` as it cut it:
 
 My chunker turns the same file into 8 chunks, each one a whole section.
 
-**The thing I changed my mind about.** My first version emitted the bare section
-and nothing else, and it looked fine until I read Halden Bay's "Getting around"
-on its own:
+**The thing I nearly got wrong.** The plan was to emit the bare section and
+nothing else. What stopped me was running the milestone's own test — "could
+someone answer a question using only this?" — against a section before writing
+any code. Halden Bay's "Getting around", on its own, reads:
 
 > The town is small enough to cross in fifteen minutes but is built on three
 > levels connected by stepped lanes... The harbour front is level; everything
@@ -70,9 +90,9 @@ Nothing in it says Halden Bay. A section body in this corpus almost never names
 its own town, because the title at the top of the file already did. Cut loose
 from the file, that chunk is unusable twice over: retrieval has nothing to match
 the word "Halden" against, and an answer built from it has nothing to attribute.
-So every chunk now carries `# <document title>` at the top. That is why the
-floor is 150 rather than the ~100 the raw sections would have allowed — the
-title line costs characters.
+So every chunk carries `# <document title>` at the top, and that went in before
+the first run rather than after. That is why the floor is 150 rather than the
+~100 the raw sections would have allowed — the title line costs characters.
 
 The same fix does a second job I didn't plan for. Nine of the fourteen guides
 end with a word-for-word identical "Practical notes" paragraph about cash,
@@ -283,9 +303,43 @@ spent on a chunk that says a judgement is coming without containing it.
 
      Milestone 5. -->
 
-**1.**
+I built this in a Claude Code session, so AI wrote most of the code in this
+repo. The two moments below are the ones where what came back needed changing,
+which is the part worth writing down.
 
-**2.**
+**1. It gave me a chunk size before it had looked at the documents.** I asked for
+a chunker that splits `city_guides` on its `##` headings, and the draft came back
+with round numbers — a 1000-character ceiling, a 200-character floor — chosen
+before anything had counted a section. That is the exact thing the brief tells
+you not to do, so I made it print the distribution first: 98 sections across the
+14 documents, 23 to 711 characters, median 284. Two things changed once I could
+see that. The ceiling turned out not to be a chunk size at all — nothing in the
+corpus comes near it — so it is only a guard for some other corpus, and I wrote
+`config.py`'s comment to say that rather than implying I had tuned it. And the
+floor moved from 200 to 150, because the number that matters is the thinnest
+genuine section in the corpus (Elder Ness's "Eat and drink", a bit over 200
+characters), and a 200 floor would have started merging real sections into each
+other. Counting also turned up the four title-only preambles — walking, eating,
+seasons and regional transport open with a heading and no introduction, giving a
+23-character fragment — which is what rule 4 in `split_documents` exists for.
+
+**2. It pasted retrieval output into this README that it had not actually run.**
+Writing up the Sample Answer section, Claude produced a `python app.py retrieve`
+output block for the Halden Bay question, formatted exactly like the real thing,
+column alignment and all. Rows 1 and 2 were right. Rows 3, 4 and 5 were invented
+— it had my five *best* distances in context from an earlier measurement and
+filled the rest of the table from documents that looked plausible. I ran the
+command. The real rows 3–5 are `guide_eating.md` at 0.2827, then
+`guide_halden_bay.md` at 0.3442 and 0.3584; the invented ones claimed 0.3684 and
+0.4508 from sections that were never retrieved. I replaced the block with the
+actual output, which is what is in this README now.
+
+What I am taking into unit 2 from that second one: the failure looked exactly
+like success. A well-formatted table is not a measurement, and the only defence
+was running the command and pasting what came back. It is the same failure this
+system's relevance gate and grounding instruction exist to prevent — a confident,
+plausible, unsourced answer — which is an uncomfortable thing to catch in my own
+write-up while building a thing designed to catch it.
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
