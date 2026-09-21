@@ -1,6 +1,6 @@
 # The Unofficial Guide
 
-**Dhyan** · corpus: `city_guides`
+**Dhyani** · corpus: `city_guides`
 
 ---
 
