@@ -39,6 +39,11 @@ CHUNK_MIN = 150         # a piece shorter than this is merged, never emitted
 
 # ─── Retrieval (Milestone 4) ─────────────────────────────────────────────────
 
+# Milestone 4. Left at 5, but measured rather than assumed. My hardest question
+# ("which town is easiest with limited mobility?") has its answer at rank 4 —
+# guide_accessibility.md#1 — so top_k=3 loses it and top_k=4 is the minimum that
+# works. 5 keeps one slot of margin. Going to 8 retrieved nothing new and just
+# added two more Corry Vale sections that don't answer the question.
 TOP_K = 5               # how many chunks to pull back per question
 
 # The relevance gate. If the best chunk is further away than this, the system
@@ -46,10 +51,16 @@ TOP_K = 5               # how many chunks to pull back per question
 #
 # LOWER IS BETTER: 0.3 is a close match, 0.9 is unrelated.
 #
-# 0.6 is a reasonable starting point, not a right answer. Milestone 4 has you
-# measure your own two groups of distances and put the cutoff in the gap.
-# Most corpora land somewhere between 0.45 and 0.75.
-THRESHOLD = 0.6
+# Milestone 4, measured on city_guides at 94 section chunks:
+#   in corpus     0.2118  0.2810  0.3121  0.3226  0.5023
+#   out of corpus 0.8026  0.8350  0.8365  0.8881  0.9753
+# A gap of 0.30 with nothing in it. I am not putting the cutoff at the midpoint
+# (0.65) — I am putting it at 0.70, nearer the out-of-corpus side. My five
+# questions were written by someone who had read the corpus, so a real user's
+# question will do worse than 0.5023, and I would rather refuse a genuine
+# question rarely than answer a nonsense one at all. 0.70 still leaves 0.10 of
+# margin under the closest out-of-corpus question.
+THRESHOLD = 0.70
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────

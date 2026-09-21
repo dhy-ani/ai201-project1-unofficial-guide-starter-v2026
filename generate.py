@@ -273,12 +273,31 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
 
 # ─── The grounded answer ─────────────────────────────────────────────────────
 
+# Tightened in Milestone 4. The starter's version was close, and the relevance
+# gate in gate.py already stops the clear misses, so this only has to catch the
+# near ones. Two of them are specific to `city_guides` and I added a rule for
+# each:
+#
+#   - The corpus covers nine towns, and a top-5 retrieval routinely returns
+#     sections from three or four different ones. "The car parks fill by 10am"
+#     is true of Halden Bay and false of Thornby Wells, and nothing in the
+#     starter's wording stopped the model carrying a fact across towns.
+#
+#   - Nine of the fourteen guides end with a word-for-word identical "Practical
+#     notes" paragraph. When several excerpts say the same sentence, "name the
+#     document your answer came from" has several equally true answers, and the
+#     model can cite whichever it likes. Criterion 5 is about that, so the
+#     instruction now says to cite the excerpt the fact was actually read from
+#     and to name more than one when more than one carries it.
 GROUNDING_INSTRUCTION = """You answer questions using only the documents provided to you.
 
 Rules:
 - Use only the information in the documents below. Do not use anything you know from elsewhere.
 - If the documents don't cover the question, say you don't have enough information. Do not guess.
 - Name the document your answer came from, using the filename given in each excerpt.
+- Cite the excerpt you actually took the fact from. If the same fact appears in more than one excerpt, name them all. Never cite an excerpt you did not use.
+- Each excerpt begins with the name of the place it is about. Facts are not transferable between places: do not answer a question about one town using a fact from another. If the excerpts only cover a different place than the one asked about, say so rather than substituting it.
+- If two excerpts disagree, say that they disagree and name both, rather than picking one.
 - Be brief. Two or three sentences is usually enough."""
 
 
