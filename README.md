@@ -156,8 +156,8 @@ in unit 2 if accessibility questions come back thin.
 
 ## Sample Answer
 
-<!-- One complete question and answer, pasted as text, with the source line
-     visible. Milestone 4. -->
+<!-- PASTE PENDING: needs one real model call. See "Sample answer" note at the
+     bottom of this section. -->
 
 **Question:**
 
@@ -166,20 +166,111 @@ in unit 2 if accessibility questions come back thin.
 ```
 ```
 
-**My relevance cutoff:**
+### Retrieval, before the model runs
 
-<!-- The number you set in config.py, and how you got there.
+`python app.py retrieve` for the same question, which is the part that decides
+what an answer can possibly be based on:
 
-     You ran five questions your corpus covers and the five in OUT_OF_SCOPE
-     that it clearly doesn't, and wrote down the best distance for each. What
-     did those two groups look like? Where was the gap? Put the actual numbers
-     here — the table below wants all ten rows.
+```
+Question: Which street in Halden Bay has cheaper food than the harbour front?
 
-     Milestone 4. -->
+#   distance   source                           preview
+----------------------------------------------------------------------------------------------------
+1   0.2118     guide_eating.md                  # Eating across the region  ## The pattern worth kno...
+2   0.2162     guide_halden_bay.md              # Halden Bay  ## Eat and drink  Seafood, unsurprisin...
+3   0.2827     guide_eating.md                  # Eating across the region  ## Local specifics  Hald...
+4   0.3442     guide_halden_bay.md              # Halden Bay  ## Getting around  The town is small e...
+5   0.3584     guide_halden_bay.md              # Halden Bay  Halden Bay is a working fishing port o...
+
+Gate: best distance 0.212 is under the 0.7 cutoff
+```
+
+All five retrieved chunks are about Halden Bay or about regional eating, and the
+answer ("Fell Street") is in both of the top two. This is the case where the
+title prefix earns its keep: chunk 1 comes from `guide_eating.md`, whose "The
+pattern worth knowing" section discusses five towns at once, and chunk 2 is
+Halden Bay's own "Eat and drink". Both say Fell Street, which is why the
+tightened instruction asks for both filenames rather than whichever one the model
+noticed first.
+
+**My relevance cutoff: `THRESHOLD = 0.70`.**
+
+I ran all five of my questions and all five of the `OUT_OF_SCOPE` ones through
+`store.search` at `top_k=5` and recorded the best (lowest) distance for each.
 
 | Question | In corpus? | Best distance |
 |---|---|---|
-|  |  |  |
+| Which street in Halden Bay has cheaper food than the harbour front? | yes | 0.2118 |
+| If I am staying in Corry Vale for a few days, where can I buy food? | yes | 0.2810 |
+| How often does the road out to Elder Ness flood? | yes | 0.3121 |
+| What time do the car parks in Halden Bay fill up on a summer weekend? | yes | 0.3226 |
+| Which town in the region is easiest to get around with limited mobility? | yes | 0.5023 |
+| What is the capital of Mongolia? | no | 0.8026 |
+| What is the recommended dosage of ibuprofen for a headache? | no | 0.8350 |
+| How do I write a for loop in Rust? | no | 0.8365 |
+| How do I change the oil in a diesel engine? | no | 0.8881 |
+| Who won the 1994 World Cup? | no | 0.9753 |
+
+**What the two groups looked like.** In-corpus 0.2118 to 0.5023. Out-of-corpus
+0.8026 to 0.9753. A gap of 0.30 with nothing in it — no overlap, not even a near
+miss. Four of the five in-corpus questions are under 0.33; the corpus is small
+and the questions are answerable, so that is about what I expected.
+
+**Why 0.70 and not the midpoint.** The midpoint of the gap is 0.65, and 0.65
+would work on these ten questions. I went to 0.70 because the gap is wider than
+the problem is. My five questions were written by someone who had just read all
+fourteen documents, so they use the corpus's own vocabulary and score better than
+a real user's question will; 0.5023 is a floor on how bad an answerable question
+can look, not a ceiling. Meanwhile the `OUT_OF_SCOPE` five are absurdly far away
+— Mongolia and diesel engines — and the real risk is a question that is
+off-corpus but adjacent, like "is there an airport shuttle", which would score
+nowhere near 0.80. So I spent the extra margin where a real question is more
+likely to land: 0.70 sits 0.20 above my worst genuine question and still 0.10
+below my closest nonsense one.
+
+At 0.70 the gate lets through 5 of 5 in-corpus questions and refuses 5 of 5
+out-of-corpus ones.
+
+**What I'd get wrong at that number.** Too high in one direction: a question
+about a neighbouring region, or about a town this corpus doesn't cover, could
+land around 0.6–0.7 and get through the gate, at which point the only thing
+stopping a bad answer is the grounding instruction. That is a real exposure and
+it is the reason I tightened `GROUNDING_INSTRUCTION` in `generate.py` rather than
+treating the gate as sufficient. In the other direction, at 0.70 I am almost
+certainly refusing nothing I should be answering — which is a comfortable place
+to be wrong, but it does mean criterion 3's "4 of 5" is being tested against the
+easy version of the problem.
+
+### Top-k
+
+Left at 5, after checking. The answer to my accessibility question
+("Thornby Wells") is in `guide_accessibility.md#1`, which comes back at **rank
+4**, distance 0.5528:
+
+| top-k | questions whose `expects` phrase is in the retrieved chunks |
+|---|---|
+| 3 | 4 of 5 |
+| 4 | 5 of 5 |
+| 5 | 5 of 5 |
+| 6 | 5 of 5 |
+| 8 | 5 of 5 |
+
+So `top_k=3` would have quietly cost me a question and `top_k=4` is the minimum
+that works. I kept 5 for one slot of margin. Raising it to 8 found nothing new —
+it added two more Corry Vale sections that don't answer the question, which is
+the "bury it in loosely related material" failure.
+
+That question is also where the weak chunk I flagged above shows up:
+`guide_accessibility.md#0`, the document's introduction, is retrieved at rank 2
+(0.5113) and contributes nothing to the answer. One of my five retrieval slots is
+spent on a chunk that says a judgement is coming without containing it.
+
+<!-- Sample answer: the question/answer block at the top of this section is the
+     only thing in this README that needs a live model call. Run:
+
+         python app.py ask "Which street in Halden Bay has cheaper food than the harbour front?"
+
+     and paste the answer and the "Sources retrieved:" line into the block. -->
 
 ## How I Used AI
 

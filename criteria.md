@@ -61,9 +61,22 @@ in at least 4 of 5 tries.
      what happened into your run log. Swap them for your own if you'd rather —
      just keep five of them, or the "4 of 5" above has nothing to be 4 of. -->
 
-**Why this target:**
-<!-- What did your distances look like when you set the cutoff in Milestone 4?
-     Was there a clean gap, or did the two groups overlap? -->
+**Why this target:** The two groups did not overlap, and it was not close. At
+`top_k=5` on my 94 section chunks the five in-corpus questions came back at
+0.2118, 0.2810, 0.3121, 0.3226 and 0.5023, and the five `OUT_OF_SCOPE` questions
+at 0.8026, 0.8350, 0.8365, 0.8881 and 0.9753 — a gap of 0.30 with nothing
+anywhere in it. I set `THRESHOLD = 0.70` inside that gap and both groups fall
+cleanly on the right side of it.
+
+Given that, 4 of 5 looks conservative, and I thought about writing 5 of 5.
+I am keeping 4 of 5 for one reason: the target has to survive questions I have
+not thought of yet. `OUT_OF_SCOPE` asks about Mongolia, diesel engines and Rust,
+which are about as far from a regional travel guide as a question can get, and
+0.80 is what that distance looks like. A question that is off-corpus but
+*adjacent* — "what's the best hotel in Marchwood for a business trip", "is there
+a train to the airport" — would score far closer than 0.80 and is exactly the
+kind the gate might wave through. My five are the easy version of this test, so I
+am not going to claim a perfect score against the easy version.
 
 ---
 
