@@ -347,120 +347,360 @@ write-up while building a thing designed to catch it.
      ───────────────────────────────────────────────────────────────────────── -->
 
 ---
-
 # Unit 2
 
-<!-- These sections get ADDED to what's already above. Don't delete or rewrite
-     unit 1 — the point is that someone can see what you said before you knew
-     how it went. -->
+## A note on what could and couldn't be tested
+
+Three of my five criteria were measured properly. Two were not, and the reason
+is not a judgement call I made — it is that this environment has no
+`GEMINI_API_KEY`, so `run_eval.py` raises on its first question and writes no
+file at all:
+
+```
+RuntimeError: No GEMINI_API_KEY found.
+Copy .env.example to .env and paste your key in, then try again.
+```
+
+Criteria 1, 3 and 4 do not touch the model. Criterion 1 is about what retrieval
+brings back, criterion 3 is about a numeric comparison in `gate.py`, and
+criterion 4 is about the shape of the chunks — none of them needs an answer to
+exist. Those three are measured, three runs each, by `aggregate.py::main`
+scored by `scorer.py`, with the output committed in `results/`.
+
+Criteria 2 and 5 both read the generated answer. They are reported as **not
+measured** everywhere below. I have not estimated them, inferred them from the
+retrieval results, or marked them MET on the grounds that they probably would
+be. An untested criterion is not a passed criterion.
 
 ## Run Log — Before
 
-<!-- Your five criteria, three runs each. `python run_eval.py --label before`
-     runs the questions, puts the OUT_OF_SCOPE ones through the gate, and
-     writes it all into results/ for you. Targets come from criteria.md; the
-     verdict column is your call.
+`python aggregate.py --label before` →
+[`results/criteria_2026-09-28_0304_before.md`](results/criteria_2026-09-28_0304_before.md)
 
-     Criterion 3 is measured in one deterministic pass rather than three, so
-     the same number goes in all three run columns. That's correct, not lazy.
-
-     Milestone 1. -->
+Corpus `city_guides`, 94 chunks, top-k 5, cutoff 0.70, semantic retrieval only.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunks contain the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | not measured | not measured | not measured | NOT TESTED |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Chunks: start at heading, end on sentence, ≥150 chars | 10 of 10 | pass | pass | pass | MET |
+| 5. The named source actually contains the answer | 4 of 5 | not measured | not measured | not measured | NOT TESTED |
 
-<!-- Underneath, paste the REAL output for each criterion from one of your
-     runs — the actual text your system produced, not a description of it.
-     Name the file and function that produced it. -->
+**All three run columns are identical, and that is the correct result rather
+than a caching artefact.** The index is fixed, retrieval is a nearest-neighbour
+lookup over fixed vectors, and the gate is a comparison against a constant —
+criteria 1, 3 and 4 have no source of run-to-run variation. Running them three
+times is the check that this is true, and it came back true. The two criteria
+that *would* have moved between runs are exactly the two I could not run.
+
+### Real output — criterion 1
+
+From `aggregate.py::measure`, scored by `scorer.py::retrieval_hit`:
+
+| Question | expects | in chunks? | at rank | best distance | closest chunk |
+|---|---|---|---|---|---|
+| What time do the car parks in Halden Bay fill up on a summer weekend? | `10am` | yes | 2 | 0.3226 | `guide_halden_bay.md#6` |
+| Which street in Halden Bay has cheaper food than the harbour front? | `Fell Street` | yes | 1 | 0.2118 | `guide_eating.md#0` |
+| How often does the road out to Elder Ness flood? | `six times` | yes | 1 | 0.3121 | `guide_elder_ness.md#1` |
+| Which town in the region is easiest to get around with limited mobility? | `Thornby Wells` | yes | 4 | 0.5023 | `guide_corry_vale.md#2` |
+| If I am staying in Corry Vale for a few days, where can I buy food? | `farm shop` | yes | 1 | 0.2810 | `guide_corry_vale.md#3` |
+
+### Real output — criterion 3
+
+From `aggregate.py::measure` via `gate.py::check`, cutoff 0.70:
+
+| Question | refused? | best distance |
+|---|---|---|
+| What is the capital of Mongolia? | yes | 0.8026 |
+| How do I change the oil in a diesel engine? | yes | 0.8881 |
+| Who won the 1994 World Cup? | yes | 0.9753 |
+| What is the recommended dosage of ibuprofen for a headache? | yes | 0.8350 |
+| How do I write a for loop in Rust? | yes | 0.8365 |
+
+### Real output — criterion 4
+
+From `scorer.py::chunks_well_formed` over every chunk from
+`chunker.py::split_documents`, not a sample of ten:
+
+```
+- chunks checked: 94
+- not starting at a heading: 0 []
+- ending mid-sentence: 0 []
+- under 150 characters: 0 []
+- shortest 174, longest 762, average 322
+Verdict: PASS.
+```
 
 ## Verdicts
 
-<!-- MET or MISSED for each of the five, against the target you wrote last
-     unit — not a new one. Plus a sentence on how you decided. That sentence
-     matters most where it was close.
-
-     If your target said 4 of 5 and your runs came out 4, 3, 4, that's a MISS.
-     The target has to hold, not show up occasionally.
-
-     Milestone 2. -->
-
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
+| 1 | Retrieved chunks contain the answer (4 of 5) | **MET** | 5/5 on all three runs. No judgement needed — `scorer.py::retrieval_hit` does a substring match for the `expects` phrase I wrote in unit 1, so I am not grading my own wording. |
+| 2 | Every answer names a source (5 of 5) | **NOT TESTED** | Needs a generated answer. No API key in this environment, so `run_eval.py` never completed a single question. Not marked MET. |
+| 3 | Gate stops out-of-corpus questions (4 of 5) | **MET** | 5/5. The closest out-of-corpus question was 0.8026 against a 0.70 cutoff, so it wasn't close. |
+| 4 | Chunk shape (10 of 10 sampled) | **MET** | My criterion allowed me to read ten chunks by hand; I checked all 94 in code instead, which is strictly harder, and got zero violations in each of the three categories. |
+| 5 | Named source actually contains the answer (4 of 5) | **NOT TESTED** | Same reason as criterion 2. This is the one I most wanted to test, because it is the one I wrote the corpus-specific risk into. |
+
+I want to be plain about criterion 4, because "MET" flatters it. I said in unit
+1 that it was a structural guarantee rather than a judgement call, and that is
+exactly how it behaved: my chunker prefixes every chunk with `# <title>`, so
+"begins at a heading" cannot fail without the splitter being broken. Passing it
+tells you the chunker is doing what it says, and nothing about whether the
+chunks are good. The 150-character floor is the only part that was ever at
+real risk, and 174 is not a comfortable margin — one thinner section in a
+future corpus and it fails.
 
 ## Diagnoses
 
-<!-- For each miss: which stage caused it, and how. The stage alone isn't
-     enough — you need the mechanism.
+**No measured criterion was missed.** So, per the milestone, the honest question
+is whether the targets were set low. Three of them were, in different ways, and
+one wasn't but got lucky.
 
-     Not a diagnosis: "Question 3 didn't work."
-     A diagnosis:     "Question 3 asks about laundry costs. The answer is in
-                       one sentence that got split across two chunks, so
-                       neither chunk on its own contains it."
+**Criterion 3 was set too easy, and I said so at the time.** My unit 1 reason
+for keeping 4 of 5 rather than 5 of 5 reads: *"`OUT_OF_SCOPE` asks about
+Mongolia, diesel engines and Rust... My five are the easy version of this test,
+so I am not going to claim a perfect score against the easy version."* That was
+correct and I still failed to act on it — I should have replaced the questions
+with adjacent ones rather than predicting they were too easy and running them
+anyway. The measured gap is 0.5023 to 0.8026, and the cutoff sits at 0.70 with
+0.20 of clearance on one side and 0.10 on the other. Nothing in this test
+touched the cutoff.
 
-     The five stages: loading → chunking → embedding → retrieval → generation.
+**Criterion 4 is true by construction**, as above.
 
-     Look for a pattern. If three misses all ask about numbers, that's one
-     problem, not three.
+**Criterion 1 hit its target, but my reasoning behind the target was wrong**,
+and that is the most useful thing this test produced. In unit 1 I wrote: *"the
+farm shop is named in exactly two documents out of fourteen... If one question
+misses, I expect it to be this one."* The Corry Vale question came back at
+**rank 1, distance 0.2810** — one of the strongest results in the set. The
+question that nearly failed was the one I had not worried about at all:
 
-     Missed nothing? Say so, then say honestly whether your targets were set
-     low, and which one you'd tighten and to what.
+> Which town in the region is easiest to get around with limited mobility?
 
-     Milestone 3. -->
+Answer at **rank 4**, best distance **0.5023**, and the top-ranked chunk was
+`guide_corry_vale.md#2` — a section from a document that has nothing to do with
+the question. At `top_k=3` this question fails and criterion 1 comes out 4/5.
+It passed on a one-slot margin.
+
+**The mechanism, which is the actual diagnosis: the retrieval stage, and
+specifically an embedding-similarity failure that chunking made visible.** My
+chunker stamps every chunk with its document title, so the corpus contains nine
+chunks whose text begins `## Getting around` under nine different town titles.
+The question asks which town is "easiest to get around". Cosine similarity sees
+nine strong, near-identical matches for the *topic* and distributes itself
+across them; the document that actually answers the question is
+`guide_accessibility.md`, whose title is literally "Getting around the region
+with limited mobility". The discriminating term is **"limited mobility"**, which
+appears in one document out of fourteen — and cosine similarity over a
+384-dimension sentence embedding has no mechanism for rewarding an exact rare
+term. It can only see that everything is roughly about getting around.
+
+**The pattern.** This is not a one-question problem. It is the general shape of
+my corpus: fourteen documents describing nine places using the same seven
+section headings. Every question of the form "which place is X" has to
+discriminate between nine near-parallel texts, and semantic similarity is
+weakest at exactly that job. Q1 shows a milder version — its answer was at rank
+2, behind another Halden Bay chunk. The two questions that were hardest are the
+two that compare across places; the three that name a place and want a fact
+from it were all rank 1.
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** hybrid retrieval. `store.py::search` now runs BM25 keyword
+search alongside the existing semantic search and fuses the two rankings with
+reciprocal rank fusion (`store.py::_rrf`, k=60). Toggle in `config.HYBRID`; the
+semantic-only path is kept so the before/after can be re-run at any time with
+`python aggregate.py --no-hybrid`.
 
-**Why I picked it:**
+**Why I picked it:** the diagnosis names an exact rare term — "limited
+mobility", present in one document of fourteen — that cosine similarity cannot
+reward and BM25 is built to reward. That is the one-sentence connection, and it
+is the only change I made.
 
-<!-- Connect it to a specific diagnosis above in one sentence. If you can't,
-     you picked a fix because it sounded impressive. -->
+**Deliberate design decision: `Result.distance` is still the cosine distance in
+both modes.** Fusion happens over the *orderings*, never over the numbers. A
+BM25 score and a cosine distance are not on the same scale and no honest
+conversion exists between them, but more importantly my relevance gate is
+calibrated at 0.70 against cosine — if hybrid mode had written a fused score
+into that field, the cutoff would have silently stopped meaning anything and
+criterion 3 would have been measuring nothing.
+
+### The bug I shipped first
+
+My first version made retrieval dramatically **worse** — three of five questions
+lost the answer completely, criterion 1 would have gone from 5/5 to 2/5. It was
+not BM25's fault. I built the BM25 index straight from `collection.query`'s
+result and cached it by collection name, not noticing that `query` returns
+documents *sorted by distance*, so the ordering is different for every question.
+Every question after the first was scoring against an index whose positions
+belonged to the previous question's ordering. Rebuilding it from
+`collection.get()`, which has a stable order, and mapping into it by chunk id,
+fixed it — `store.py::_bm25_index` now carries that explanation in its
+docstring so I don't do it again.
+
+I am recording this because the failure looked exactly like a legitimate
+negative result. Had I taken the first numbers at face value, I would have
+written a confident and completely wrong conclusion that keyword search hurts
+this corpus.
 
 ### Run Log — After
 
-<!-- Same format, same five criteria, three runs each.
-     `python run_eval.py --label after` -->
+`python aggregate.py --label after` →
+[`results/criteria_2026-09-28_0307_after.md`](results/criteria_2026-09-28_0307_after.md)
+
+Same corpus, same 94 chunks, same top-k 5, same cutoff 0.70. Only retrieval
+changed.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunks contain the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | not measured | not measured | not measured | NOT TESTED |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Chunks: start at heading, end on sentence, ≥150 chars | 10 of 10 | pass | pass | pass | MET |
+| 5. The named source actually contains the answer | 4 of 5 | not measured | not measured | not measured | NOT TESTED |
 
 **Did it help?**
 
-<!-- Say plainly whether it did, and how you know. If it made things worse,
-     say that — a change that backfired, honestly reported, earns full credit
-     and is more interesting than one that worked. What matters is that you can
-     tell.
+**It helped the system and it did not help the score, and both halves of that
+are worth saying.**
 
-     Milestone 4. -->
+Not one criterion verdict changed, because criterion 1 was already at 5/5 before
+I touched anything. A criterion that is at its ceiling cannot register an
+improvement. The change is real and it is entirely invisible in the table above,
+which is a fact about how I wrote my criteria rather than about the change.
+
+Where it does show is the rank of the answering chunk — the thing the diagnosis
+was actually about:
+
+| Question | Rank before | Rank after | Top-ranked chunk before → after |
+|---|---|---|---|
+| Halden Bay car parks | 2 | **1** | `guide_halden_bay.md#6` → `guide_halden_bay.md#1` |
+| Halden Bay cheaper street | 1 | 1 | `guide_eating.md#0` → unchanged |
+| Elder Ness flooding | 1 | 1 | `guide_elder_ness.md#1` → unchanged |
+| **Limited mobility** | **4** | **3** | `guide_corry_vale.md#2` → **`guide_accessibility.md#0`** |
+| Corry Vale food | 1 | 1 | `guide_corry_vale.md#3` → unchanged |
+
+Mean rank of the answering chunk: **1.8 → 1.4**. Nothing regressed.
+
+The most meaningful cell is the bolded one, and it is not the rank. The
+limited-mobility question's top result stopped being a Corry Vale section — a
+document with no bearing on the question — and became the accessibility guide,
+the document that actually answers it. That is the citation-correctness problem
+criterion 5 exists for, improved at exactly the question where it was worst. I
+cannot show it in criterion 5's row, because criterion 5 needs the model.
+
+One thing the change did that I did not predict. The gate's "best distance" is
+the minimum over the *returned* set, and the returned set is now chosen by fused
+rank rather than by distance alone, so the semantically-nearest chunk sometimes
+isn't in it. Every out-of-corpus distance rose:
+
+| Out-of-corpus question | Before | After |
+|---|---|---|
+| Capital of Mongolia | 0.8026 | 0.8575 |
+| Diesel engine oil | 0.8881 | 0.9190 |
+| 1994 World Cup | 0.9753 | 1.0291 |
+| Ibuprofen dosage | 0.8350 | 0.8617 |
+| For loop in Rust | 0.8365 | 0.8378 |
+
+The in-corpus worst case moved 0.5023 → 0.5113. So the gap the cutoff sits in
+widened from [0.5023, 0.8026] to [0.5113, 0.8378], and 0.70 is still comfortably
+inside it. This is a benign outcome, but it was luck rather than design: I
+changed retrieval and the gate's input quietly changed underneath it. Worth
+naming as a coupling between two components I had been thinking of as separate.
 
 ## What's Still Broken
 
-<!-- For each criterion still missed after your fix: what you'd do about it,
-     and why you stopped where you did.
+**Criteria 2 and 5 are untested.** This is the biggest hole and it is not a
+matter of effort. Both need a live model call and there is no `GEMINI_API_KEY`
+in this environment. What I would do: add the key, run
+`python run_eval.py --label before` and `--label after`, and let `scorer.py`
+score them — `names_source` and `citation_correct` are written, committed and
+ready, so this is one command and not one more piece of work. I stopped here
+because the alternative was to guess at two numbers, and a guessed number in a
+run log is worse than an empty cell.
 
-     "I ran out of time" is fine if it's true. Pretending nothing is left is
-     not.
+I would expect criterion 5 to be the one that fails. Nine of fourteen documents
+end with an identical "Practical notes" paragraph, and nothing in the pipeline
+except the title prefix distinguishes their chunks.
 
-     Milestone 5. -->
+**Criterion 3 is untested in the way that matters.** It passed 5/5 against
+questions about Mongolia and diesel engines. The failure mode I actually care
+about is a question that is off-corpus but adjacent — "is there an airport
+shuttle", "what's the best hotel in Marchwood for a business trip" — which would
+score far closer to the cutoff than 0.80. I did not swap the questions in
+because Milestone 2 is explicit that a target you missed stays where it is and a
+criterion is only revised when it could not be *measured*. Mine could be
+measured; it was just easy. Changing the question set mid-unit would have made
+the before/after incomparable, which is the one thing the unit asks me not to
+do. So it stays, with this written next to it.
+
+**The limited-mobility question still needs three slots.** Rank 3 of 5 is better
+than rank 4, but it is not rank 1, and `guide_accessibility.md#0` — the
+introduction chunk I flagged as weak back in unit 1's Sample Chunks section,
+the one that "says a judgement is coming without containing the judgement" — is
+still occupying the top slot ahead of the chunk that has the answer. That
+prediction was made before any of this was measured and it turned out to be
+exactly right. The fix is to merge a document's introduction into its first real
+section rather than emitting it. I did not do it because it is a chunking change
+and the unit allows one improvement, which I had already spent.
+
+**The BM25 index is rebuilt from the whole collection.** Fine at 94 chunks,
+where scoring every chunk costs nothing. On a corpus of 100,000 it would need a
+candidate pool instead of a full scan. Noted in `store.py::search` rather than
+fixed, because this corpus is 94 chunks.
 
 ## What I'd Do Differently
 
-<!-- Knowing what you know now — which of your five criteria would you write
-     differently, and why?
+**Criterion 1 is the one I would rewrite, and it's the one that passed.** "The
+retrieved chunks include one that contains the answer" is insensitive to rank:
+an answer found at rank 5 scores identically to one found at rank 1. It reported
+5/5 before and 5/5 after a change that measurably improved retrieval, which
+means it could not see the difference between a system on the edge of failing
+and one comfortably passing. I would write it as: *for at least 4 of 5
+questions, the chunk containing the answer is in the top 3.* That version is
+still checkable the same way, would have come out 4/5 before and 5/5 after, and
+would have caught the limited-mobility problem in unit 1 rather than unit 2.
 
-     Milestone 5. -->
+**I would also stop predicting which question is hard.** I reasoned carefully in
+unit 1 that the sparsely-covered fact would be the weak one and built the 4-of-5
+target around it. I was wrong: rarity of coverage turned out not to matter, and
+*similarity to other documents* was what mattered. The Corry Vale farm shop is
+mentioned twice in the whole corpus and nothing else competes with it, so it is
+easy. The accessibility answer competes with eight near-identical "Getting
+around" sections, so it is hard. A corpus of parallel documents about parallel
+places punishes questions that compare, not questions that are obscure — and I
+could have worked that out from reading the documents, which I did do, without
+needing the test to tell me.
+
+**Criterion 4 I would make about content rather than structure.** As written it
+asks whether my splitter applied its own rule, which it cannot fail without
+being broken. Something like *no chunk consists only of a document introduction
+with no factual content* would have flagged `guide_accessibility.md#0` — a chunk
+I spotted by eye in unit 1, wrote a paragraph about, and then wrote a criterion
+that could not detect.
+
+## How I Used AI — unit 2
+
+**3. It fabricated a plausible negative result, and I nearly reported it.** The
+hybrid retrieval change came back making things dramatically worse — three of
+five questions losing the answer — and the obvious write-up was "keyword search
+hurts this corpus, here are the numbers." Before writing that I asked for the
+raw BM25 rankings on their own, separately from the fusion. They were *good*:
+for the limited-mobility question BM25 put the answering chunk at rank 2 by
+itself. A component that ranks well alone and badly in combination points at the
+combination, not the component, and the bug was in my caching — I had built the
+BM25 index from query-ordered documents and reused it across questions with
+different orderings. The lesson is the same one as unit 1's second moment: the
+wrong answer was well-formed and internally consistent, and the only thing that
+caught it was checking a component against its inputs rather than reading the
+summary.
+
+**4. It wanted to mark criteria 2 and 5 as MET.** With no API key, the available
+evidence for criterion 2 is that the prompt stamps `[from <filename>]` on every
+excerpt and the grounding instruction asks for the filename back twice over — so
+the answer would almost certainly name a source. That is a reason to *expect* a
+pass and not evidence of one. They are recorded as NOT TESTED. The whole premise
+of this unit is that a criterion is a thing you check rather than a thing you
+reason your way to, and marking two of five on the strength of an argument would
+have been the exact failure the unit is designed to teach against.
