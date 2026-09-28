@@ -32,7 +32,7 @@ import questions as qs
 import scorer
 
 
-def measure(top_k, threshold, corpus, variant):
+def measure(top_k, threshold, corpus, variant, hybrid=None):
     """One pass over criteria 1 and 3. Returns (hits, refusals, detail)."""
     from store import search
     import gate
@@ -41,7 +41,8 @@ def measure(top_k, threshold, corpus, variant):
 
     hits = 0
     for item in qs.answered():
-        results = search(item["question"], top_k=top_k, corpus=corpus, variant=variant)
+        results = search(item["question"], top_k=top_k, corpus=corpus,
+                         variant=variant, hybrid=hybrid)
         hit = scorer.retrieval_hit(item["expects"], results)
         hits += hit
         rank = next(
@@ -62,7 +63,8 @@ def measure(top_k, threshold, corpus, variant):
 
     refused = 0
     for question in getattr(qs, "OUT_OF_SCOPE", []):
-        results = search(question, top_k=top_k, corpus=corpus, variant=variant)
+        results = search(question, top_k=top_k, corpus=corpus,
+                         variant=variant, hybrid=hybrid)
         decision = gate.check(results, threshold=threshold)
         refused += not decision.passed
         detail["out"].append(
@@ -84,6 +86,8 @@ def main():
     parser.add_argument("--variant", default="default")
     parser.add_argument("--top-k", type=int, default=None)
     parser.add_argument("--threshold", type=float, default=None)
+    parser.add_argument("--no-hybrid", action="store_true",
+                        help="semantic search only, i.e. the unit 1 behaviour")
     args = parser.parse_args()
 
     from ingest import load_documents
@@ -97,7 +101,8 @@ def main():
 
     passes = []
     for run in range(1, args.runs + 1):
-        hits, refused, detail = measure(top_k, threshold, corpus, args.variant)
+        hits, refused, detail = measure(top_k, threshold, corpus, args.variant,
+                                        hybrid=False if args.no_hybrid else None)
         passes.append({"hits": hits, "refused": refused, "detail": detail})
         print(f"run {run}: criterion 1 = {hits}/{total}, criterion 3 = {refused}/{out_total}")
 
@@ -128,6 +133,7 @@ def write(passes, shape, chunks, args, corpus, top_k, threshold, total, out_tota
         f"- Corpus: `{corpus}` (index variant `{args.variant}`)",
         f"- top-k: {top_k} · relevance cutoff: {threshold}",
         f"- Runs: {len(passes)}",
+        f"- Retrieval mode: {'semantic only' if args.no_hybrid else ('hybrid (semantic + BM25, RRF)' if config.HYBRID else 'semantic only')}",
         f"- When: {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
         f"| Criterion | Target | {heads} |",

@@ -46,6 +46,18 @@ CHUNK_MIN = 150         # a piece shorter than this is merged, never emitted
 # added two more Corry Vale sections that don't answer the question.
 TOP_K = 5               # how many chunks to pull back per question
 
+# ─── Hybrid retrieval (unit 2, the improvement) ──────────────────────────────
+# Semantic search alone ranked the accessibility question's answer 4th, behind
+# a top hit from the wrong document. The question's exact phrase "limited
+# mobility" appears in one document out of fourteen, and cosine similarity has
+# no way to reward an exact term — it sees nine near-identical "Getting around"
+# headings and spreads itself across them. BM25 does reward it.
+#
+# Set HYBRID = False to get the unit 1 behaviour back. Both paths are kept so
+# the before/after comparison can be re-run at any time.
+HYBRID = True
+RRF_K = 60              # reciprocal-rank-fusion constant; 60 is the usual default
+
 # The relevance gate. If the best chunk is further away than this, the system
 # refuses to answer instead of handing the model thin material.
 #

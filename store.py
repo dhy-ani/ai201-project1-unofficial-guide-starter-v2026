@@ -18,6 +18,7 @@ rest of the project if they were wrong:
 """
 
 import os
+import re
 import shutil
 from dataclasses import dataclass
 
@@ -178,18 +179,81 @@ def build_index(
     return len(chunks)
 
 
+# ─── Keyword search, for the hybrid path (unit 2's improvement) ──────────────
+
+_TOKEN = re.compile(r"[a-z0-9]+")
+_bm25_cache: dict[str, tuple] = {}
+
+
+def _tokenize(text: str) -> list[str]:
+    """Lowercase alphanumeric runs.
+
+    Deliberately crude, and deliberately not stripping digits: three of my five
+    questions turn on a number or a time ("10am", "six times"), and a tokenizer
+    that threw those away would remove the main reason for adding BM25.
+    """
+    return _TOKEN.findall(text.lower())
+
+
+def _bm25_index(collection, name: str):
+    """BM25 over the collection, in a STABLE document order, built once.
+
+    The stable order matters more than it looks. `collection.query` returns
+    documents sorted by distance, so the order is different for every question.
+    My first version built BM25 straight from the query result and cached it by
+    collection name — which meant every question after the first was scoring
+    against an index whose positions belonged to the previous question's
+    ordering. Retrieval got dramatically worse and the cause was not BM25 at
+    all. `collection.get()` returns a fixed order, so positions mean the same
+    thing on every call, and the caller maps into it by chunk id.
+    """
+    if name not in _bm25_cache:
+        from rank_bm25 import BM25Okapi
+
+        data = collection.get()
+        position = {chunk_id: i for i, chunk_id in enumerate(data["ids"])}
+        index = BM25Okapi([_tokenize(d) for d in data["documents"]])
+        _bm25_cache[name] = (index, position)
+    return _bm25_cache[name]
+
+
+def _rrf(rankings: list[list[int]], k: int) -> dict[int, float]:
+    """Reciprocal rank fusion over several rankings of the same items.
+
+    Each ranking is a list of item indices, best first. An item's score is the
+    sum of 1/(k + rank) across the rankings it appears in. Chosen over adding
+    the raw scores together because a cosine distance and a BM25 score are not
+    on the same scale and never will be — fusing the ORDERINGS sidesteps having
+    to invent a conversion between them.
+    """
+    scores: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, item in enumerate(ranking, 1):
+            scores[item] = scores.get(item, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
 def search(
     question: str,
     top_k: int | None = None,
     corpus: str | None = None,
     variant: str = "default",
+    hybrid: bool | None = None,
 ) -> list[Result]:
     """
-    Retrieve the chunks closest in meaning to a question.
+    Retrieve the chunks closest to a question.
 
-    Returns them nearest-first, each with its distance.
+    With `hybrid` on (the default, `config.HYBRID`), this is semantic search and
+    BM25 keyword search fused by reciprocal rank. With it off, it is the unit 1
+    behaviour: semantic only.
+
+    Returns them best-first. `distance` is ALWAYS the cosine distance, in both
+    modes. That is on purpose — the relevance gate is calibrated against cosine
+    at 0.70, and if hybrid mode returned a fused score in that field the cutoff
+    would silently stop meaning anything.
     """
     top_k = top_k or config.TOP_K
+    hybrid = config.HYBRID if hybrid is None else hybrid
     name = config.collection_name(corpus, variant)
 
     try:
@@ -199,21 +263,49 @@ def search(
             f"No index called '{name}'. Run `python app.py index` first."
         ) from exc
 
+    count = collection.count()
+
+    # Semantic pass. In hybrid mode we score every chunk rather than the top-k,
+    # so that a chunk BM25 likes still arrives with its true cosine distance
+    # attached and the gate keeps working. Fine at 94 chunks; on a corpus of
+    # 100,000 this would need a candidate pool instead.
     raw = collection.query(
         query_embeddings=embed([question]),
-        n_results=min(top_k, collection.count()),
+        n_results=count if hybrid else min(top_k, count),
     )
 
+    chunk_ids = raw["ids"][0]
+    docs = raw["documents"][0]
+    metas = raw["metadatas"][0]
+    distances = raw["distances"][0]
+
+    if hybrid:
+        # Everything below is in QUERY-RESULT positions: 0 is the nearest chunk.
+        semantic_ranking = list(range(len(docs)))
+
+        index, position = _bm25_index(collection, name)
+        scores = index.get_scores(_tokenize(question))
+        # Map each query-result row onto its score in the stable BM25 ordering.
+        by_id = [scores[position[cid]] for cid in chunk_ids]
+        keyword_ranking = sorted(range(len(docs)), key=lambda i: -by_id[i])
+
+        fused = _rrf([semantic_ranking, keyword_ranking], config.RRF_K)
+        order = sorted(fused, key=lambda i: -fused[i])[:top_k]
+        # Present them by cosine distance, so the printed list still reads
+        # nearest-first and gate.check's min() is the first row.
+        order.sort(key=lambda i: distances[i])
+    else:
+        order = list(range(min(top_k, len(docs))))
+
     results: list[Result] = []
-    for text, meta, distance in zip(
-        raw["documents"][0], raw["metadatas"][0], raw["distances"][0]
-    ):
+    for i in order:
+        meta = metas[i]
         results.append(
             Result(
-                text=text,
+                text=docs[i],
                 source=str(meta.get("source", "unknown")),
                 label=f"{meta.get('source', 'unknown')}#{meta.get('index', 0)}",
-                distance=float(distance),
+                distance=float(distances[i]),
                 produced_by=str(meta.get("produced_by", "unknown")),
             )
         )
